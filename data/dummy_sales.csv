@@ -1,0 +1,7 @@
+order_id,order_date,region,salesperson,product,units_sold,unit_price,total_amount,payment_method
+1001,2026-03-01,North,Alice Johnson,Laptop,3,899.99,2699.97,Credit Card
+1002,2026-03-02,West,Bob Smith,Monitor,5,249.50,1247.50,UPI
+1003,2026-03-03,South,Carla Reyes,Keyboard,12,45.00,540.00,Debit Card
+1004,2026-03-04,East,David Kim,Mouse,20,19.99,399.80,Cash
+1005,2026-03-05,North,Emma Davis,Printer,2,179.75,359.50,Bank Transfer
+1006,2026-03-06,West,Frank Moore,Desk Chair,4,129.99,519.96,Credit Card
