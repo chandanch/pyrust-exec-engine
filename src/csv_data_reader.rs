@@ -1,13 +1,14 @@
 use std::fs::File;
-use std::io::BufWriter;
+use std::io::{BufWriter, Write};
 use std::path::Path;
 
 use csv::StringRecord;
 use pyo3::exceptions::{PyIOError, PyValueError};
 use pyo3::prelude::*;
-use serde_json::{Map, Value};
+use serde::ser::{SerializeMap, Serializer};
+use serde::Serialize;
 
-fn record_to_json(headers: &StringRecord, record: &StringRecord) -> PyResult<Value> {
+fn validate_record(headers: &StringRecord, record: &StringRecord) -> PyResult<()> {
     if headers.len() != record.len() {
         return Err(PyValueError::new_err(format!(
             "CSV row has {} fields but header has {} fields",
@@ -16,13 +17,22 @@ fn record_to_json(headers: &StringRecord, record: &StringRecord) -> PyResult<Val
         )));
     }
 
-    let object = headers
-        .iter()
-        .zip(record.iter())
-        .map(|(header, value)| (header.to_owned(), Value::String(value.to_owned())))
-        .collect::<Map<String, Value>>();
+    Ok(())
+}
 
-    Ok(Value::Object(object))
+struct RowAsJsonObject<'a> {
+    headers: &'a StringRecord,
+    record: &'a StringRecord,
+}
+
+impl Serialize for RowAsJsonObject<'_> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut map = serializer.serialize_map(Some(self.headers.len()))?;
+        for (header, value) in self.headers.iter().zip(self.record.iter()) {
+            map.serialize_entry(header, value)?;
+        }
+        map.end()
+    }
 }
 
 #[pyfunction]
@@ -45,7 +55,21 @@ pub fn csv_to_json_file(csv_path: &str, json_path: &str) -> PyResult<String> {
     })?;
     let headers = headers.clone();
 
-    let mut rows = Vec::new();
+    let file = File::create(json_path).map_err(|error| {
+        PyIOError::new_err(format!(
+            "Failed to create JSON file {}: {error}",
+            json_path.display()
+        ))
+    })?;
+    let mut writer = BufWriter::new(file);
+    writer.write_all(b"[\n").map_err(|error| {
+        PyIOError::new_err(format!(
+            "Failed to start JSON file {}: {error}",
+            json_path.display()
+        ))
+    })?;
+
+    let mut is_first = true;
     for result in reader.records() {
         let record = result.map_err(|error| {
             PyValueError::new_err(format!(
@@ -53,20 +77,35 @@ pub fn csv_to_json_file(csv_path: &str, json_path: &str) -> PyResult<String> {
                 csv_path.display()
             ))
         })?;
-        rows.push(record_to_json(&headers, &record)?);
+        validate_record(&headers, &record)?;
+
+        if !is_first {
+            writer.write_all(b",\n").map_err(|error| {
+                PyIOError::new_err(format!(
+                    "Failed to append separator to JSON file {}: {error}",
+                    json_path.display()
+                ))
+            })?;
+        }
+        is_first = false;
+
+        serde_json::to_writer_pretty(
+            &mut writer,
+            &RowAsJsonObject {
+                headers: &headers,
+                record: &record,
+            },
+        )
+        .map_err(|error| {
+            PyIOError::new_err(format!(
+                "Failed to write JSON row to {}: {error}",
+                json_path.display()
+            ))
+        })?;
     }
-
-    let file = File::create(json_path).map_err(|error| {
+    writer.write_all(b"\n]\n").map_err(|error| {
         PyIOError::new_err(format!(
-            "Failed to create JSON file {}: {error}",
-            json_path.display()
-        ))
-    })?;
-    let writer = BufWriter::new(file);
-
-    serde_json::to_writer_pretty(writer, &rows).map_err(|error| {
-        PyIOError::new_err(format!(
-            "Failed to write JSON file {}: {error}",
+            "Failed to finish JSON file {}: {error}",
             json_path.display()
         ))
     })?;
