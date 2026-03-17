@@ -495,7 +495,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--generated-csv",
-        default=str(base_dir / "data" / "dummy_sales_500.csv"),
+        default=str(base_dir / "data" / "dummy_sales_generated.csv"),
         help="Path for generated CSV when --generate-rows is used.",
     )
     parser.add_argument(
@@ -528,7 +528,12 @@ def main() -> None:
         raise ValueError("--iterations must be >= 1")
 
     if args.generate_rows > 0:
-        csv_path = Path(args.generated_csv).resolve()
+        generated_csv_path = Path(args.generated_csv).resolve()
+        if generated_csv_path.name == "dummy_sales_generated.csv":
+            generated_csv_path = generated_csv_path.with_name(
+                f"dummy_sales_{args.generate_rows}.csv"
+            )
+        csv_path = generated_csv_path
         generate_sales_csv(csv_path, args.generate_rows)
         print(f"Generated CSV with {args.generate_rows} rows at: {csv_path}")
 
